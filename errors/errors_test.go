@@ -7,15 +7,16 @@ import (
 
 	"github.com/CyCoreSystems/error-playground/errors"
 	pkgerrors "github.com/pkg/errors"
+	"github.com/test-go/testify/assert"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
-func TestSpecialErrors(t *testing.T) {
-	rootErr := errors.NewSpecial(&errors.Special{
-		Name:        "root",
-		Description: "root error",
-		Code:        int(codes.PermissionDenied),
-	})
+func TestExternalError(t *testing.T) {
+	rootErr := errors.External(
+		codes.PermissionDenied,
+		"root error",
+	)
 
 	midErr := fmt.Errorf("I am some metadata: %w", rootErr)
 
@@ -23,37 +24,27 @@ func TestSpecialErrors(t *testing.T) {
 
 	t.Logf("outerErr: %s", outerErr.Error())
 
-	specialError := new(errors.SpecialError)
+	var extError errors.ExternalError
 
-	if stderrors.As(outerErr, &specialError) {
-		t.Logf("wrapped rootErr: %s", specialError.Error())
+	if stderrors.As(outerErr, &extError) {
+		t.Logf("wrapped rootErr: %s", extError.Error())
 
-		t.Logf("special data: %+v", specialError.Special())
+		t.Logf("special data: %+v", extError.GRPCStatus())
 	}
 
-	var localError errors.Error
+	// Add another detail
+	outerErr = errors.AddDetails(outerErr, &anypb.Any{
+		TypeUrl: "https://dummy.com/bogus-text",
+		Value: []byte("I am bogus"),
+	})
 
-	if stderrors.As(outerErr, &localError) {
-		t.Logf("wrapped (B) rootErr: %s", specialError.Error())
+	var detailedError errors.DetailedError
 
-		t.Logf("special (B) data: %+v", specialError.Special())
-	}
-}
+	if stderrors.As(outerErr, &detailedError) {
+		t.Logf("wrapped (B) rootErr: %s", detailedError.Error())
 
-func TestHappyErrors(t *testing.T) {
-	rootErr := errors.NewHappy()
+		t.Logf("special (B) data: %+v", detailedError.Details())
 
-	midErr := fmt.Errorf("I think I have something joyful: %w", rootErr)
-
-	outerErr := pkgerrors.Wrap(midErr, "if I container goodness, good for you; I do not know")
-
-	t.Logf("outerErr: %s", outerErr.Error())
-
-	t.Logf("special: %+v", errors.Specialize(outerErr))
-
-	var localError errors.Error
-
-	if stderrors.As(outerErr, &localError) {
-		t.Logf("unwrapped happines is: %s", localError.InternalID())
+		assert.Len(t, detailedError.Details(), 2)
 	}
 }
